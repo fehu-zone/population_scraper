@@ -1,33 +1,44 @@
 from selenium.webdriver.common.by import By
 
 def format_number(number_str):
-    """String'deki sayıları temizleyip int'e dönüştürür."""
     try:
-        return int(number_str.replace(',', '').strip())
-    except ValueError:
+        if not number_str:
+            return None
+            
+        cleaned = number_str.strip().replace(',', '')
+        
+        # Bilimsel gösterim kontrolü (örn: 1.2M)
+        if 'M' in cleaned:
+            return int(float(cleaned.replace('M', '')) * 1_000_000)
+        if 'K' in cleaned:
+            return int(float(cleaned.replace('K', '')) * 1_000)
+            
+        return int(cleaned)
+    except Exception as e:
+        print(f"Format hatası: {e}")
         return None
-
-
 
 def extract_number_from_element(element):
     """
-    HTML içindeki birden fazla span yapısından sayıyı birleştirir ve tam sayı olarak döndürür.
-    
-    Args:
-        element (WebElement): Sayıyı içeren HTML elementi.
-        
-    Returns:
-        int: Birleştirilmiş tam sayı.
-        None: Hata oluşursa veya sayı bulunamazsa.
+    Extract numeric value from Selenium element containing multiple span elements.
+    Example: <span class="rts-nr-int">1</span><span class="rts-nr-int">234</span> → 1234
     """
     try:
-        spans = element.find_elements(By.XPATH, ".//span[contains(@class, 'rts-nr-int')]")
-        if not spans:
-            print("Elementte sayı bulunamadı.")
-            return None
-        number_str = "".join([span.text for span in spans])
-        return format_number(number_str)
+        # Find all integer parts
+        int_spans = element.find_elements(By.XPATH, ".//span[contains(@class, 'rts-nr-int')]")
+        
+        # Find decimal parts if needed (örnek: 1.234,56 için)
+        # dec_spans = element.find_elements(By.XPATH, ".//span[contains(@class, 'rts-nr-dec')]")
+        
+        # Combine integer parts
+        int_part = "".join([span.text for span in int_spans])
+        
+        # Combine decimal parts if needed
+        # dec_part = "".join([span.text for span in dec_spans])
+        # full_number = f"{int_part}.{dec_part}" if dec_part else int_part
+        
+        return format_number(int_part)
+        
     except Exception as e:
-        print(f"Sayı verisi alınırken hata oluştu: {e}")
+        print(f"Elementten sayı çıkarılırken hata: {e}")
         return None
-

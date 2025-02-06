@@ -1,52 +1,94 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from scraper.utils import format_number
+from datetime import datetime, timezone
+
+# Ülke isimlerinde yapılacak düzeltmeleri burada belirtebilirsiniz.
+# country_population.py'deki mapping
+COUNTRY_NAME_MAPPING = {
+    "United States": "USA",
+    "Congo": "DR Congo",
+    "Iran (Islamic Republic of)": "Iran",
+    "Viet Nam": "Vietnam",
+    "Czechia": "Czech Republic",
+    # Diğer tutarsızlıklar için eklemeler yapın
+}
 
 def scrape_country_population():
     url = "https://www.worldometers.info/world-population/population-by-country/"
-    driver = webdriver.Chrome()
+    driver = None
     try:
-        print(f"URL'ye erişiliyor: {url}")
+        options = webdriver.ChromeOptions()
+        options.add_argument("--headless")  # GUI olmadan çalışma
+        driver = webdriver.Chrome(options=options)
+        
+        print(f"Ülke verileri için URL'ye erişiliyor: {url}")
         driver.get(url)
-        driver.implicitly_wait(5)
 
-        print("Tablo verileri çekiliyor...")
-        table = driver.find_element(By.ID, "example2")
+        wait = WebDriverWait(driver, 15)
+        table = wait.until(EC.presence_of_element_located((By.ID, "example2")))
+
+        # 📌 Sıralama butonuna tıklayarak nüfusu en yüksekten en küçüğe sıralayalım
+        sorting_button = driver.find_element(By.XPATH, "//th[@aria-label='#: activate to sort column descending']")
+        sorting_button.click()  # İlk tıklama ascending (küçükten büyüğe) sıralar
+        sorting_button.click()  # İkinci tıklama descending (büyükten küçüğe) sıralar
+        
+        print("📌 Nüfusa göre sıralama tamamlandı!")
+
+        # 📌 Güncellenmiş tabloyu tekrar bekleyelim
+        wait.until(EC.presence_of_element_located((By.ID, "example2")))
+
         rows = table.find_element(By.TAG_NAME, "tbody").find_elements(By.TAG_NAME, "tr")
-
         country_data = []
-        print(f"{len(rows)} satır bulundu. Veri işleniyor...")
-        for index, row in enumerate(rows, start=1):
-            cells = row.find_elements(By.TAG_NAME, "td")
-            if len(cells) < 6:
-                print(f"[Satır {index}] Atlandı: Beklenen sütun sayısı eksik.")
+
+        for index, row in enumerate(rows, 1):
+            try:
+                cells = row.find_elements(By.TAG_NAME, "td")
+                # Minimum 8 sütun olması gerektiğinden kontrol ediyoruz (index 7'ye kadar veri var mı)
+                if len(cells) < 8:
+                    print(f"[Satır {index}] Atlandı: Yetersiz sütun")
+                    continue
+
+                # Ülke ismi standardizasyonu
+                raw_country = cells[1].text.strip()
+                country_name = COUNTRY_NAME_MAPPING.get(raw_country, raw_country)
+                
+                # İlgili sütunlardan veriyi çekiyoruz:
+                population = format_number(cells[2].text)
+                yearly_change = float(cells[3].text.replace('%', '').strip() or 0)
+                net_change = format_number(cells[4].text)
+                # Burada index 7, 'Migrants (net)' sütunu
+                migrants = format_number(cells[7].text)
+
+                # Veri kalite kontrolü: Zorunlu alanlarda veri yoksa satırı atla
+                if None in [population, net_change, migrants]:
+                    print(f"[{country_name}] Eksik veri içeren satır atlandı")
+                    continue
+
+                country_data.append({
+                    "country": country_name,
+                    "current_population": population,  # population -> current_population
+                    "yearly_change": round(yearly_change, 2),
+                    "net_change": net_change,
+                    "migrants": migrants
+                })
+
+                print(f"[{index}] {country_name} verisi işlendi")
+
+            except Exception as row_error:
+                print(f"Satır {index} işleme hatası: {str(row_error)}")
                 continue
 
-            yearly_change_str = cells[3].text
-            try:
-                yearly_change = float(yearly_change_str.replace('%', '').strip())
-            except ValueError:
-                yearly_change = None
-                print(f"[Satır {index}] Yıllık değişim verisi dönüştürülemedi: {yearly_change_str}")
-
-            country_info = {
-                "country": cells[1].text,
-                "population": format_number(cells[2].text),
-                "yearly_change": yearly_change,
-                "net_change": format_number(cells[4].text),
-                "migrants": format_number(cells[5].text)
-            }
-            print(f"[Satır {index}] Veri işlendi: {country_info}")
-
-            country_data.append(country_info)
-
-        print(f"\nToplam {len(country_data)} ülke verisi başarıyla işlendi.")
-        return country_data
+        print(f"📌 Başarıyla alınan ülke sayısı: {len(country_data)}")
+        return country_data  # Fonksiyon bir liste döndürsün ki diğer işlemlerde kullanabilelim.
 
     except Exception as e:
-        print(f"scrape_country_population Hata: {e}")
+        print(f"❌ Ülke verisi çekme hatası: {str(e)}")
         return None
-
     finally:
-        print("Tarayıcı kapatılıyor...")
-        driver.quit()
+        if driver:
+            driver.quit()
+
+

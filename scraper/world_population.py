@@ -2,72 +2,49 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from datetime import datetime
-from scraper.utils import extract_number_from_element
+from scraper.utils import extract_number_from_element  # Assuming this is your utility function
+from datetime import datetime, timezone
+
+WORLD_DATA_ELEMENTS = {
+    "current_population": "//div[@class='maincounter-number']/span[@rel='current_population']",
+    "births_today": "//span[@rel='births_today']",
+    "deaths_today": "//span[@rel='dth1s_today']",
+    "growth_today": "//span[@rel='absolute_growth']"
+}
 
 def scrape_world_population():
-    url = "https://www.worldometers.info/world-population/"             
-    driver = webdriver.Chrome()
+    driver = None
     try:
-        print(f"URL'ye erişiliyor: {url}")
-        driver.get(url)
-        wait = WebDriverWait(driver, 10)
+        options = webdriver.ChromeOptions()
+        options.add_argument("--headless")
+        driver = webdriver.Chrome(options=options)
 
-        # Dünya nüfusu
-        print("Dünya nüfusu verisi alınıyor...")
-        current_population = extract_number_from_element(
-            wait.until(EC.presence_of_element_located(
-                (By.XPATH, "//div[@class='maincounter-number']/span[@rel='current_population']")
-            ))
-        )
-        print(f"-> Güncel Nüfus: {current_population}")
+        print("Dünya nüfus verileri alınıyor...")
+        driver.get("https://www.worldometers.info/world-population/")
 
-        # Bugünkü doğumlar
-        print("Bugünkü doğumlar verisi alınıyor...")
-        births_today = extract_number_from_element(
-            wait.until(EC.presence_of_element_located(
-                (By.XPATH, "//span[@class='rts-counter' and @rel='births_today']")
-            ))
-        )
-        print(f"-> Bugünkü Doğumlar: {births_today}")
+        wait = WebDriverWait(driver, 15)
+        world_data = {}
 
-        # Bugünkü ölümler
-        print("Bugünkü ölümler verisi alınıyor...")
-        try:
-            deaths_today = extract_number_from_element(
-                wait.until(EC.presence_of_element_located(
-                    (By.XPATH, "//span[@class='rts-counter' and @rel='dth1s_today']")
-                ))
-            )
-            print(f"-> Bugünkü Ölümler: {deaths_today}")
-        except Exception as e:
-            deaths_today = None
-            print(f"Hata: Ölümler verisi alınamadı. {e}")
+        for key, xpath in WORLD_DATA_ELEMENTS.items():
+            try:
+                element = wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
+                value = extract_number_from_element(element)
+                print(f"{key} için bulunan değer: {value}")
+                world_data[key] = value or 0
+            except Exception as e:
+                print(f"{key} verisi alınamadı, xpath: {xpath}, hata: {str(e)}")
+                world_data[key] = 0  # Assign 0 if data retrieval fails
 
-        # Bugünkü nüfus artışı
-        print("Bugünkü nüfus artışı verisi alınıyor...")
-        growth_today = extract_number_from_element(
-            wait.until(EC.presence_of_element_located(
-                (By.XPATH, "//span[@class='rts-counter' and @rel='absolute_growth']")
-            ))
-        )
-        print(f"-> Bugünkü Nüfus Artışı: {growth_today}")
+        # Veri kalite kontrolü
+        if world_data["current_population"] < 7000000000:
+            raise ValueError("Anormal nüfus değeri")
 
-        data = {
-            "current_population": current_population,
-            "births_today": births_today,
-            "deaths_today": deaths_today,
-            "growth_today": growth_today,
-            "timestamp": datetime.now().isoformat()
-        }
-
-        print("Dünya nüfusu verileri başarıyla alındı.")
-        return data
+        print("Dünya verileri başarıyla alındı")
+        return world_data
 
     except Exception as e:
-        print(f"scrape_world_population Hata: {e}")
+        print(f"Dünya verisi çekme hatası: {str(e)}")
         return None
-
     finally:
-        print("Tarayıcı kapatılıyor...")
-        driver.quit()
+        if driver:
+            driver.quit()

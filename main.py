@@ -1,71 +1,84 @@
 import time
-from elasticsearch import Elasticsearch
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+from config import INDEX_NAME
+from elastic.elastic_client import get_elastic_client, send_to_elastic, create_index_with_mapping
 from scraper.world_population import scrape_world_population
 from scraper.country_population import scrape_country_population
-from config import ELASTICSEARCH_HOSTS, INDEX_NAME_WORLD, INDEX_NAME_COUNTRIES, ELASTIC_PASSWORD
 
-
-def connect_to_elastic(elastic_hosts):
-    try:
-        es = Elasticsearch(
-            elastic_hosts,
-            basic_auth=("elastic", ELASTIC_PASSWORD),
-            ssl_show_warn=False,
-            verify_certs=False,  # Sertifika doğrulamasını devre dışı bırak
-        )
-        if es.ping():
-            print("Elasticsearch bağlantısı başarılı.")
-            return es
-        else:
-            print("Elasticsearch bağlantısı başarısız.")
-            return None
-    except Exception as e:
-        print(f"Elasticsearch bağlantısı sırasında hata: {e}")
+# main.py'deki process_data fonksiyonunu güncelle
+def process_data():
+    es = get_elastic_client()
+    if not es:
+        print("Elasticsearch bağlantı hatası!")
         return None
 
-
-
-
-def send_to_elastic(es, index_name, data):
     try:
-        # Veriyi Elasticsearch'e gönder
-        if isinstance(data, list):  # Çoklu veri gönderimi
-            for doc in data:
-                es.index(index=index_name, document=doc)
-        elif isinstance(data, dict):  # Tekil veri gönderimi
-            es.index(index=index_name, document=data)
-        print(f"{len(data) if isinstance(data, list) else 1} veri {index_name} indeksine başarıyla gönderildi.")
-    except Exception as e:
-        print(f"{index_name} indeksine veri gönderimi sırasında hata: {e}")
+        create_index_with_mapping(es, INDEX_NAME)
+        sync_timestamp = datetime.now(timezone.utc).isoformat()
 
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            world_future = executor.submit(scrape_world_population)
+            country_future = executor.submit(scrape_country_population)
+
+            world_data = world_future.result()
+            country_data = country_future.result()
+
+            if not world_data or not country_data:
+                print("Eksik veri - World Data:", bool(world_data), "Country Data:", bool(country_data))
+                return None
+
+            # Dünya verisini ayrı bir döküman olarak gönder
+            world_doc = {
+                "@timestamp": sync_timestamp,
+                "type": "world",
+                "world": {
+                    "current_population": world_data.get("current_population", 0),
+                    "births_today": world_data.get("births_today", 0),
+                    "deaths_today": world_data.get("deaths_today", 0),
+                    "growth_today": world_data.get("growth_today", 0)
+                }
+            }
+            send_to_elastic(INDEX_NAME, world_doc)
+
+            # Her ülkeyi ayrı döküman olarak gönder
+            country_docs = []
+            for country in country_data:
+                country_doc = {
+                    "@timestamp": sync_timestamp,
+                    "type": "country",
+                    "country": country["country"],
+                    "current_population": country["current_population"],
+                    "yearly_change": country["yearly_change"],
+                    "net_change": country["net_change"],
+                    "migrants": country["migrants"]
+                }
+                country_docs.append(country_doc)
+            
+            send_to_elastic(INDEX_NAME, country_docs)  # Liste olarak gönder
+
+            print("Veri başarıyla gönderildi")
+            return True
+
+    except Exception as e:
+        print(f"Veri işleme hatası: {str(e)}")
+        return None
 
 def main():
-    es = connect_to_elastic(ELASTICSEARCH_HOSTS)
-    if not es:
-        print("Elasticsearch bağlantısı kurulamadı. Program sonlanıyor.")
-        return
-
     while True:
         try:
-            # Dünya nüfusu verilerini çek ve Elasticsearch'e gönder
-            world_data = scrape_world_population()
-            if world_data:
-                send_to_elastic(es, INDEX_NAME_WORLD, world_data)
-                print(f"{INDEX_NAME_WORLD} indeksi başarıyla tamamlandı.")
-
-            # Ülke nüfus verilerini çek ve Elasticsearch'e gönder
-            country_data = scrape_country_population()
-            if country_data:
-                send_to_elastic(es, INDEX_NAME_COUNTRIES, country_data)
-                print(f"{len(country_data)} ülke verisi başarıyla {INDEX_NAME_COUNTRIES} indeksine gönderildi.")
-
-            time.sleep(60)  # 60 saniye bekle
+            start_time = time.time()
+            process_data()
+            elapsed = time.time() - start_time
+            sleep_time = max(300 - elapsed, 60)  # Minimum 1 dakika bekle
+            print(f"Sonraki çekim için bekleniyor: {sleep_time:.0f}s")
+            time.sleep(sleep_time)
         except KeyboardInterrupt:
-            print("Program sonlandırıldı.")
+            print("Program sonlandırılıyor...")
             break
         except Exception as e:
-            print(f"Hata: {e}")
-
+            print(f"Kritik hata: {str(e)}")
+            time.sleep(600)  # Büyük hata durumunda 10 dakika bekle
 
 if __name__ == "__main__":
     main()

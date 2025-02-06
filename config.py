@@ -1,12 +1,8 @@
-# Elasticsearch bağlantı bilgileri
 ELASTICSEARCH_HOSTS = [
-    "https://localhost:9200",  # es01
-    "https://localhost:9201",  # es02
-    "https://localhost:9202"   # es03
+    "https://localhost:9200",
+    "https://localhost:9201",
+    "https://localhost:9202"
 ]
 
-# İndeks isimleri
-INDEX_NAME_COUNTRIES = "countries_population"
-INDEX_NAME_WORLD = "world_population"
-
+INDEX_NAME = "world_population_data" 
 ELASTIC_PASSWORD = "elastic123"
