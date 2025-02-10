@@ -1,3 +1,5 @@
+# C:\Users\Fehu\Desktop\population_scraper\elastic\elastic_client.py
+
 from elasticsearch import Elasticsearch, helpers
 from config import ELASTICSEARCH_HOSTS, ELASTIC_PASSWORD
 
@@ -34,6 +36,7 @@ def create_index_with_mapping(es, index_name):
             "properties": {
                 "@timestamp": {"type": "date"},
                 "type": {"type": "keyword"},  # Döküman tipi (world/country)
+                "is_current": {"type": "boolean"},  # Aktif snapshot mu?
                 "world": {  # Sadece type:world dökümanlarında kullanılır
                     "properties": {
                         "current_population": {"type": "long"},
@@ -53,5 +56,39 @@ def create_index_with_mapping(es, index_name):
     }
 
     if es.indices.exists(index=index_name):
-        es.indices.delete(index=index_name)
+        print(f"{index_name} indeksi zaten mevcut. Mapping güncellemesi yapılmadı.")
+        return
+
     es.indices.create(index=index_name, body=mapping)
+    print(f"{index_name} indeksi oluşturuldu.")
+
+
+# Aşağıdaki fonksiyonu ekleyin:
+def update_current_snapshot(es, index_name, new_snapshot):
+    """
+    İndeksteki tüm dökümanlarda:
+      - @timestamp değeri new_snapshot olanlara is_current=true,
+      - diğerlerine is_current=false
+    ayarlanır.
+    """
+    # 1. Tüm dökümanları false yapalım:
+    response1 = es.update_by_query(
+        index=index_name,
+        body={
+            "query": {"match_all": {}},
+            "script": {"source": "ctx._source.is_current = false", "lang": "painless"}
+        },
+        refresh=True  # Değişikliklerin hemen sorgulanabilir olmasını sağlar.
+    )
+    print("Tüm dökümanlarda is_current false yapıldı:", response1)
+
+    # 2. Yeni snapshot'a ait dökümanlarda is_current'u true yapalım:
+    response2 = es.update_by_query(
+        index=index_name,
+        body={
+            "query": {"term": {"@timestamp": new_snapshot}},
+            "script": {"source": "ctx._source.is_current = true", "lang": "painless"}
+        },
+        refresh=True
+    )
+    print("Yeni snapshot için is_current true yapıldı:", response2)
