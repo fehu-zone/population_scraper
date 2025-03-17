@@ -8,10 +8,16 @@
 ## Proje Genel Bakış / Project Overview 🚀
 
 <div align="center">
-  <img src="https://via.placeholder.com/800x400.png?text=Worldometer+Data+Pipeline+Architecture" alt="Sistem Mimarisi" width="80%">
+  <svg xmlns="http://www.w3.org/2000/svg" height="100" viewBox="0 96 960 960" width="100" fill="#B22222">
+    <path d="M480 976q-33 0-56.5-23.5T400 896q0-33 23.5-56.5T480 816q33 0 56.5 23.5T560 896q0 33-23.5 56.5T480 976Zm0-200-120-120-120 120H80l120-320V336h80v120l120 320h80l120-320V336h80v120l120 320h-160l-120-120-120 120Z"/>
+  </svg>
   <br>
   <em>Veri Akış Mimarisi: Scraping → Elasticsearch → Kibana → Web Arayüzü</em>
 </div>
+
+
+
+
 
 ---
 
