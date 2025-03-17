@@ -56,10 +56,10 @@
 
 ```mermaid
 graph TD
-    A[Worldometer] -->|Selenium Bot| B(Veri Kazıma)
-    B --> C{Veri Validation}
+    A[Worldometer] -->|Selenium Bot| B(Data Scraping)
+    B --> C{Data Validation}
     C -->|Valid| D[Elasticsearch]
-    C -->|Invalid| E[Hata Yönetimi]
+    C -->|Invalid| E[Error Management]
     D --> F[Kibana Dashboard]
-    D --> G[Web Arayüzü]
-    G --> H[Kullanıcı Etkileşimi]
+    D --> G[Web interface]
+    G --> H[User Interaction]
